@@ -1,2 +1,2 @@
 # getip
-Get public IP address your server
+Get your Public IP address is the fastest way.
