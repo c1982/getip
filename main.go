@@ -4,6 +4,8 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"os/exec"
+	"regexp"
 )
 
 var (
@@ -14,6 +16,7 @@ var (
 
 func init() {
 	providers = []string{
+		"http://checkip.amazonaws.com/",
 		"https://api.ipify.org/",
 		"http://bot.whatismyipaddress.com/",
 		"https://wgetip.com",
@@ -23,7 +26,19 @@ func init() {
 }
 
 func main() {
+	defer func() {
+		if err := recover(); err != nil {
+			getWith3rdParty()
+		}
+	}()
 
+	out, _ := exec.Command("nslookup", "-type=TXT", "o-o.myaddr.l.google.com", "ns1.google.com").Output()
+	r, _ := regexp.Compile(`[0-9]+(?:\.[0-9]+){3}`)
+	print(r.FindAllString(string(out), -1)[1])
+
+}
+
+func getWith3rdParty() {
 	for i := 0; i < len(providers); i++ {
 		publicIP, err = get(providers[i])
 
