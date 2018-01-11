@@ -1,60 +1,63 @@
 package main
 
 import (
-	"io/ioutil"
-	"net/http"
+	"errors"
 	"os"
+	"regexp"
+	"strings"
+
+	"github.com/miekg/dns"
 )
 
-var (
-	providers []string
-	publicIP  string
-	err       error
-)
+var dnsServer []string
 
 func init() {
-	providers = []string{
-		"https://api.ipify.org/",
-		"http://bot.whatismyipaddress.com/",
-		"https://wgetip.com",
-		"https://icanhazip.com",
-		"https://ipinfo.io/ip",
+	dnsServer = []string{
+		"o-o.myaddr.l.google.com ns1.google.com",
+		"myip.opendns.com resolver1.opendns.com",
 	}
 }
 
 func main() {
 
-	for i := 0; i < len(providers); i++ {
-		publicIP, err = get(providers[i])
+	var (
+		err      error
+		response *dns.Msg
+	)
+
+	for _, v := range dnsServer {
+		split := strings.Split(v, " ")
+
+		if len(split) != 2 {
+			err = errors.New("can't resolve : " + v)
+			continue
+		}
+
+		local, host := split[0], split[1]
+
+		client, msg := new(dns.Client), new(dns.Msg)
+
+		msg.SetQuestion(dns.Fqdn(local), dns.TypeANY)
+
+		response, _, err = client.Exchange(msg, host+":53")
 
 		if err == nil {
-			break
+			rx, _ := regexp.Compile(`[0-9]+(?:\.[0-9]+){3}`)
+
+			if len(response.Answer) == 1 {
+				print(rx.FindAllString(response.Answer[0].String(), -1)[0])
+				break
+			}
+
+			err = errors.New("can't resolve")
+
 		}
+
 	}
 
 	if err != nil {
-		print(err)
+		println(err.Error())
 		os.Exit(1)
-	} else {
-		print(publicIP)
-	}
-}
-
-func get(provider string) (ipaddr string, err error) {
-
-	resp, err := http.Get(provider)
-
-	if err != nil {
-		return ipaddr, err
 	}
 
-	return toString(resp)
-}
-
-func toString(resp *http.Response) (ipaddr string, err error) {
-
-	body, err := ioutil.ReadAll(resp.Body)
-	ipaddr = string(body)
-
-	return ipaddr, err
 }
