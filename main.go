@@ -1,63 +1,70 @@
 package main
 
 import (
-	"errors"
+	"fmt"
 	"os"
-	"regexp"
-	"strings"
 
 	"github.com/miekg/dns"
 )
 
-var dnsServer []string
+var (
+	resolvers   map[string]string
+	defaultPort = 53
+	resp        *dns.Msg
+	publicIP    string
+)
 
 func init() {
-	dnsServer = []string{
-		"o-o.myaddr.l.google.com ns1.google.com",
-		"myip.opendns.com resolver1.opendns.com",
+	resolvers = map[string]string{
+		"o-o.myaddr.l.google.com": "ns1.google.com",
+		"myip.opendns.com":        "resolver1.opendns.com",
 	}
 }
 
 func main() {
+	var err error
 
-	var (
-		err      error
-		response *dns.Msg
-	)
+	client, msg := new(dns.Client), new(dns.Msg)
+	msg.RecursionDesired = false
 
-	for _, v := range dnsServer {
-		split := strings.Split(v, " ")
+	for name, host := range resolvers {
+		msg.SetQuestion(dns.Fqdn(name), dns.TypeANY)
+		resp, _, err = client.Exchange(msg, fmt.Sprintf("%s:%d", host, defaultPort))
 
-		if len(split) != 2 {
-			err = errors.New("can't resolve : " + v)
+		if err != nil {
 			continue
 		}
 
-		local, host := split[0], split[1]
-
-		client, msg := new(dns.Client), new(dns.Msg)
-
-		msg.SetQuestion(dns.Fqdn(local), dns.TypeANY)
-
-		response, _, err = client.Exchange(msg, host+":53")
-
-		if err == nil {
-			rx, _ := regexp.Compile(`[0-9]+(?:\.[0-9]+){3}`)
-
-			if len(response.Answer) == 1 {
-				print(rx.FindAllString(response.Answer[0].String(), -1)[0])
-				break
-			}
-
-			err = errors.New("can't resolve")
-
+		if resp.Rcode != dns.RcodeSuccess {
+			continue
 		}
 
+		publicIP = extractIP(resp)
+
+		if publicIP != "" {
+			break
+		}
 	}
 
 	if err != nil {
-		println(err.Error())
+		print(err.Error())
 		os.Exit(1)
+	} else {
+		print(publicIP)
+	}
+}
+
+func extractIP(r *dns.Msg) string {
+
+	for _, rr := range resp.Answer {
+		if t, ok := rr.(*dns.TXT); ok {
+			return t.Txt[0]
+		}
+
+		if a, ok := rr.(*dns.A); ok {
+			return a.A.String()
+		}
 	}
 
+	return ""
 }
